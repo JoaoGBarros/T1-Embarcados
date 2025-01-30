@@ -111,7 +111,7 @@ verifica_colisao:
     cmp ax, BORNA_DIREITA  ; Bola ultrapassou a borda direita?
     jge near gol_jogador1
 
-colisao_paddle:
+colisao_paddle_esquerdo:
 
     ; Verifica colisão com paddle esquerdo
 
@@ -120,16 +120,31 @@ colisao_paddle:
     sub ax, [bola_raio]
     add ax, [largura]
     cmp [bola_x], ax
-    jle colisao
+    jg colisao_paddle_direito
+    mov ax, [ret1_y]
+    cmp [bola_y], ax
+    jl colisao_paddle_direito
+    mov ax, [ret1_y]
+    add ax, [altura]
+    cmp [bola_y], ax
+    jl colisao
 
 
+colisao_paddle_direito:
     ; Verifica colisão com paddle direito
     mov ax, [ret2_x]
     add ax, [bola_raio]
     sub ax, [largura]
     cmp [bola_x], ax
-    jge colisao
-
+    jl .fim_colisoes
+    mov ax, [ret2_y]
+    cmp [bola_y], ax
+    jl .fim_colisoes
+    mov ax, [ret2_y]
+    add ax, [altura]
+    cmp [bola_y], ax
+    jl colisao
+    
 .fim_colisoes:
     ret
 
