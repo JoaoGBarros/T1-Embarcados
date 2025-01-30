@@ -17,11 +17,11 @@ segment code
 
 main_loop:
     CALL limpa_tela
-    CALL desenhar_jogadores
-    CALL atualiza_bola
-    CALL verifica_colisao
     CALL captura_entrada
-    CALL delay           ; Aguarda retraço vertical
+    CALL atualiza_bola
+    CALL verifica_colisao    ; Verifica colisões com paddles e bordas
+    CALL desenhar_jogadores
+    CALL delay
     JMP main_loop
 
 
@@ -35,50 +35,15 @@ delay:
     ret
 
 limpa_tela:
-    push es
-    push di
-    push cx
-    push ax
-    push dx
-
-    mov ax, 0A000h  ; Endereço base da memória de vídeo
+    mov dx, 03C4h        ; Porta do Sequencer
+    mov ax, 0F02h        ; Seleciona todos os 4 planos
+    out dx, ax
+    mov ax, 0A000h
     mov es, ax
-
-    xor ax, ax      ; Valor 0 para limpar a tela
-    xor di, di      ; Iniciar no pixel 0
-    mov cx, 32000   ; 640x480 pixels / 2 (pois cada STO é uma palavra)
-
-    mov dx, 03C4h   ; Porta de controle do sequenciador VGA
-
-    mov al, 02h     ; Índice do registro de máscara de mapa (plane mask)
-    out dx, al
-    mov al, 01h     ; Seleciona plano 0
-    out dx, al
-    rep stosw       ; Limpa o plano 0
-
-    mov al, 02h
-    out dx, al
-    mov al, 02h     ; Seleciona plano 1
-    out dx, al
-    rep stosw       ; Limpa o plano 1
-
-    mov al, 02h
-    out dx, al
-    mov al, 04h     ; Seleciona plano 2
-    out dx, al
-    rep stosw       ; Limpa o plano 2
-
-    mov al, 02h
-    out dx, al
-    mov al, 08h     ; Seleciona plano 3
-    out dx, al
-    rep stosw       ; Limpa o plano 3
-
-    pop dx
-    pop ax
-    pop cx
-    pop di
-    pop es
+    xor di, di
+    mov cx, 38400        ; 640x480/8 = 38400 bytes por plano
+    xor ax, ax
+    rep stosw
     ret
 
 gol_jogador1:
@@ -90,7 +55,7 @@ gol_jogador2:
 reset_bola:
     mov word [bola_x], 320
     mov word [bola_y], 240
-    call gera_direcao_aleatoria
+    neg word [bola_vel_x]
     ret
 
 desenhar_jogadores:
@@ -117,18 +82,6 @@ sair:
 ;-------------------------------------------------------------------------------
 ; FUNÇÕES DE MOVIMENTO
 ;-------------------------------------------------------------------------------
-
-gera_direcao_aleatoria:
-    mov ah, 00h   ; Função de timer
-    int 1Ah       ; DX = ticks
-    test dx, 1    ; Verifica bit menos significativo
-    jz .positivo
-    mov word [bola_vel_y], -1
-    ret
-
-.positivo:
-    mov word [bola_y], 1
-    ret
 
 ; Na colisão com paddles:
 colisao_paddle:
@@ -163,37 +116,6 @@ verifica_colisao:
     add ax, [bola_raio]
     cmp ax, BORNA_DIREITA  ; Bola ultrapassou a borda direita?
     jge near gol_jogador1
-
-    ; --- Colisão com o paddle esquerdo ---
-    mov ax, [bola_x]
-    sub ax, [bola_raio]
-    cmp ax, BORNA_ESQUERDA + 70
-    jg .fim_colisoes   ; Se não colidiu, ignora
-
-    mov ax, [bola_y]
-    cmp ax, [ret1_y]
-    jl .fim_colisoes   ; Se está acima do paddle, ignora
-
-    cmp ax, [ret1_y]
-    jg .fim_colisoes   ; Se está abaixo do paddle, ignora
-
-    jmp colisao_paddle      ; Se colidiu, inverte direção X
-
-    ; --- Colisão com o paddle direito ---
-    mov ax, [bola_x]
-    add ax, [bola_raio]
-    cmp ax, BORNA_DIREITA + 70
-    jl .fim_colisoes   ; Se não colidiu, ignora
-
-    mov ax, [bola_y]
-    cmp ax, [ret2_y]
-    jl .fim_colisoes   ; Se está acima do paddle, ignora
-
-    cmp ax, [ret2_y]
-    jg .fim_colisoes   ; Se está abaixo do paddle, ignora
-
-    jmp colisao_paddle      ; Se colidiu, inverte direção X
-
 
 .fim_colisoes:
     ret
