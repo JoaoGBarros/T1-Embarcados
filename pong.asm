@@ -83,12 +83,6 @@ sair:
 ; FUNÇÕES DE MOVIMENTO
 ;-------------------------------------------------------------------------------
 
-; Na colisão com paddles:
-colisao_paddle:
-    ; Mantém o ângulo de 45° invertendo ambas as velocidades
-    neg word [bola_vel_x]
-    neg word [bola_vel_y]
-    ret
 
 inverte_y:
     NEG     word [bola_vel_y]  ; Inverte direção vertical
@@ -117,7 +111,30 @@ verifica_colisao:
     cmp ax, BORNA_DIREITA  ; Bola ultrapassou a borda direita?
     jge near gol_jogador1
 
+colisao_paddle:
+
+    ; Verifica colisão com paddle esquerdo
+
+    mov ax, [ret1_x]
+    add ax, [largura]
+    sub ax, [bola_raio]
+    add ax, [largura]
+    cmp [bola_x], ax
+    jle colisao
+
+
+    ; Verifica colisão com paddle direito
+    mov ax, [ret2_x]
+    add ax, [bola_raio]
+    sub ax, [largura]
+    cmp [bola_x], ax
+    jge colisao
+
 .fim_colisoes:
+    ret
+
+colisao:
+    neg word [bola_vel_x]  ; Inverte direção horizontal
     ret
 
 atualiza_bola:
