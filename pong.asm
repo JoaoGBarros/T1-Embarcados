@@ -12,69 +12,38 @@ segment code
     MOV     [modo_anterior], AL
     MOV     AX, 0012h
     INT     10h
-
-    
-    MOV CX, 5
-    MOV SI, left_blocks
-    call desenhar_blocos
-
-    MOV CX, 5
-    MOV SI, right_blocks
-    call desenhar_blocos
-
+    CALL tela_de_dificuldade
     CALL main_loop
 
 main_loop:
     CALL limpa_tela
-    call wait_sync
     CALL captura_entrada
     CALL atualiza_bola
     CALL verifica_colisao    ; Verifica colisões com paddles e bordas
     CALL desenhar_jogadores
-    call wait_sync
+    CALL delay
     JMP main_loop
 
 
-wait_sync:
-    mov dx,03DAh
-wait_end:
-    in al,dx
-    test al,8
-    jnz wait_end
-wait_start:
-    in al,dx
-    test al,8
-    jz wait_start
+delay:
+    ; Aguarda o retraço vertical
+    mov dx, 03DAh      ; Porta de status do VGA
+.aguarda_retraco:
+    in al, dx
+    test al, 08h       ; Bit 3 = Retraço vertical ativo?
+    jz .aguarda_retraco
     ret
 
 limpa_tela:
     mov dx, 03C4h        ; Porta do Sequencer
-    mov ax, 0F02h        ; Seleciona todos os planos de cor
+    mov ax, 0F02h        ; Seleciona todos os 4 planos
     out dx, ax
-    mov ax, 0A000h       ; Segmento de memória de vídeo
+    mov ax, 0A000h
     mov es, ax
-    mov bx, 20           ; Começa em y=40 (borda superior)
-
-.loop_linhas:
-    cmp bx, 460          ; Processa até y=440 (480 - 40)
-    jge .fim_limpeza
-
-    ; Offset da linha: y * 80 + byte_inicial (x=50 → byte 6)
-    mov ax, bx
-    mov cx, 80
-    mul cx               ; AX = y * 80
-    add ax, 6            ; Começa no byte 6 (x=50)
-    mov di, ax
-
-    ; Limpa 68 bytes (34 palavras) até x=590 (byte 73)
-    mov cx, 34           ; 34 palavras = 68 bytes
-    xor ax, ax           ; Cor preta
+    xor di, di
+    mov cx, 38400        ; 640x480/8 = 38400 bytes por plano
+    xor ax, ax
     rep stosw
-
-    inc bx
-    jmp .loop_linhas
-
-.fim_limpeza:
     ret
 
 gol_jogador1:
@@ -87,52 +56,327 @@ reset_bola:
     mov word [bola_x], 320
     mov word [bola_y], 240
     neg word [bola_vel_x]
-    neg word [bola_vel_y]
     ret
 
 desenhar_jogadores:
     MOV     byte [cor], branco_intenso
     MOV     CX, [ret1_x]
     MOV     DX, [ret1_y]
+    ; CX = X inicial, DX = Y inicial
+    MOV     AX, CX
+    ADD     AX, [largura]       ; X final
+    MOV     BX, DX
+    ADD     BX, [altura]        ; Y final
     CALL    desenhar_retangulo
 
     ; Desenhar segundo retângulo (direita)
     MOV     byte [cor], verde_claro
     MOV     CX, [ret2_x]
     MOV     DX, [ret2_y]
+    ; CX = X inicial, DX = Y inicial
+    MOV     AX, CX
+    ADD     AX, [largura]       ; X final
+    MOV     BX, DX
+    ADD     BX, [altura]        ; Y final
     CALL    desenhar_retangulo
-    CALL    desenhar_bola
-    ret
 
-desenhar_blocos:
-    MOV ax, [SI+6] ; Ativo
-    cmp ax, 0
-    je .fim_blocos
-    PUSH CX
-    MOV     byte [cor], branco_intenso
-    MOV     CX, [SI]
-    MOV     DX, [SI+2]
-    PUSH SI
-    CALL    desenhar_retangulo
-    POP SI
-    POP CX
-
-.fim_blocos
-    ADD SI, 8
-    loop desenhar_blocos
     CALL    desenhar_bola
     RET
 
-sair:
+tela_de_pausa:
     MOV     AH, 0
     MOV     AL, [modo_anterior]
-    INT     10h  
+    MOV     SI, pausa_mensagem  ; Carrega o endereço da string em SI
+    MOV     BL, 0x0F ; determinando a cor a partir de uma tabela fixa do registrador BL
+    
+    MOV     CX,5				;número de caracteres
+    MOV     BX,0
+    MOV     DH,15				;linha 0-29
+    MOV     DL,28				;coluna 0-79
+    MOV		byte[cor], branco_intenso
+pausa_loop:
+    CALL    cursor
+    MOV     AX, [BX+pausa_mensagem]
+    CALL    caracter
+    INC     BX					;proximo caracter
+	INC		DL					;avanca a coluna
+    LOOP    pausa_loop
+
+    ; para sair da pausa
+espera_p:
+    MOV ah, 08h
+    INT 21h
+    cmp al, 'p'
+    jne tela_de_pausa
+    ret
+
+
+tela_de_sair:
+    MOV     AH, 0
+    MOV     AL, [modo_anterior]
+    MOV     SI, sair_mensagem  ; Carrega o endereço da string em SI
+    MOV     BL, 0x0F ; determinando a cor a partir de uma tabela fixa do registrador BL
+    
+    MOV     CX,25				;número de caracteres
+    MOV     BX,0
+    MOV     DH,15				;linha 0-29
+    MOV     DL,28				;coluna 0-79
+    MOV		byte[cor], branco_intenso
+    CALL    sair_loop
+    CMP     CL, 1
+    JNE     tela_sair_fim
+    CALL    encerra
+
+tela_sair_fim:
+    RET
+
+tela_de_reiniciar:
+    MOV     SI, reiniciar_mensagem ; Carrega o endereço da string em SI
+    MOV     BL, 0x0F ; determinando a cor a partir de uma tabela fixa do registrador BL
+    
+    MOV     CX,29				;número de caracteres
+    MOV     BX,0
+    MOV     DH,15				;linha 0-29
+    MOV     DL,28				;coluna 0-79
+    MOV		byte[cor], branco_intenso
+    CALL    sair_loop
+    CMP     CL, 1
+    JE      reiniciando
+    CALL encerra
+
+reiniciando:
+    LEA AX, [..start]
+    JMP AX
+    RET
+sair_loop:
+    CALL    cursor
+    MOV     AX, [BX+SI]
+    CALL    caracter
+    INC     BX					;proximo caracter
+	INC		DL					;avanca a coluna
+    LOOP    sair_loop
+
+    ; caixa para ter um "sim" escrito
+    MOV     byte [cor], branco_intenso
+    MOV     CX, [retsim_x]
+    MOV     DX, [retsim_y]
+    
+    CALL    desenha_caixa_sim
+
+    ; caixa para ter um "não" escrito
+    MOV     byte [cor], branco_intenso
+    MOV     CX, [retnao_x]
+    MOV     DX, [retnao_y]
+    
+    CALL    desenha_caixa_nao
+
+; precisa trabalhar limpeza de buffer com isso daqui, mas funciona para seleções múltiplas (base da tela de dificuldade)
+seleciona_nao:
+    MOV     byte [cor], branco_intenso
+    MOV     CX, [retsim_x]
+    MOV     DX, [retsim_y]
+    CALL    desenha_caixa_sim
+
+    MOV     byte [cor], ciano
+    MOV     CX, [retnao_x]
+    MOV     DX, [retnao_y]
+    CALL    desenha_caixa_nao
+
+    MOV     AH, 08h
+    INT     21h
+    CMP     AL, 4DH ; seta direita
+    JE      seleciona_sim
+    CMP     AL, 4BH ; seta esquerda
+    JE      seleciona_sim
+    CMP     AL, 0DH
+    JNE     seleciona_nao
+    RET
+
+seleciona_sim:
+    MOV     byte [cor], branco_intenso
+    MOV     CX, [retnao_x]
+    MOV     DX, [retnao_y]
+    CALL    desenha_caixa_nao
+
+    MOV     byte [cor], ciano
+    MOV     CX, [retsim_x]
+    MOV     DX, [retsim_y]
+    CALL    desenha_caixa_sim
+
+    MOV     AH, 08h
+    INT     21h
+    CMP     AL, 0DH
+    JE      seta_flag_sim
+    CMP     AL, 4DH ; seta direita
+    JE      seleciona_nao
+    CMP     AL, 4BH ; seta esquerda
+    JE      seleciona_nao
+    JMP     seleciona_sim
+
+seta_flag_sim:
+    MOV     CL, 1
+    RET
+
+seta_flag_nao:
+    MOV     CL, 0
+    RET
+
+encerra:
+    CALL    limpa_tela
+    INT     10h
     MOV     AX, 4C00h
     INT     21h
+
+tela_de_dificuldade:
+    MOV     SI, texto_dificuldade ; Carrega o endereço da string em SI
+    MOV     BL, 0x0F ; determinando a cor a partir de uma tabela fixa do registrador BL
+    
+    MOV     CX,23				;número de caracteres
+    MOV     BX,0
+    MOV     DH,15				;linha 0-29
+    MOV     DL,28				;coluna 0-79
+    MOV		byte[cor], branco_intenso
+dificuldade_loop:
+    CALL    cursor
+    MOV     AX, [BX+texto_dificuldade]
+    CALL    caracter
+    INC     BX					;proximo caracter
+	 INC     DL					;avanca a coluna
+    LOOP    dificuldade_loop
+
+    ; caixa para ter um "fácil" escrito
+    MOV     byte [cor], branco_intenso
+    MOV     CX, [retfacil_x]
+    MOV     DX, [retfacil_y]
+    
+    CALL    desenha_caixa_facil
+
+    ; caixa para ter um "medio" escrito
+    MOV     byte [cor], branco_intenso
+    MOV     CX, [retmedio_x]
+    MOV     DX, [retmedio_y]
+    
+    CALL    desenha_caixa_medio
+
+    ; caixa para ter um "dificil" escrito
+    MOV     byte [cor], branco_intenso
+    MOV     CX, [retdificil_x]
+    MOV     DX, [retdificil_y]
+    
+    CALL    desenha_caixa_dificil
+
+seleciona_dificuldade:
+    MOV     byte [cor], ciano
+    MOV     CX, [retfacil_x]
+    MOV     DX, [retfacil_y]
+    CALL    desenha_caixa_facil
+
+    MOV     AH, 08h
+    INT     21h
+    CMP     AL, 4BH ; seta esquerda
+    JE      seleciona_dificil
+    CMP     AL, 4DH ; seta direita
+    JE      seleciona_medio
+    CMP     AL, 0DH
+    JNE     seleciona_dificuldade
+    RET
+
+seleciona_medio:
+    MOV     byte [cor], branco_intenso
+    MOV     CX, [retfacil_x]
+    MOV     DX, [retfacil_y]
+    CALL    desenha_caixa_facil
+
+    MOV     byte [cor], ciano
+    MOV     CX, [retmedio_x]
+    MOV     DX, [retmedio_y]
+    CALL    desenha_caixa_medio
+
+
+    MOV     byte [cor], branco_intenso
+    MOV     CX, [retdificil_x]
+    MOV     DX, [retdificil_y]
+    CALL    desenha_caixa_dificil
+
+    MOV     AH, 08h
+    INT     21h
+    CMP     AL, 4BH ; seta esquerda
+    JE      seleciona_facil
+    CMP     AL, 4DH ; seta direita
+    JE      seleciona_dificil
+    CMP     AL, 0DH
+    JNE      seleciona_medio
+    RET
+
+seleciona_dificil:
+    MOV     byte [cor], branco_intenso
+    MOV     CX, [retfacil_x]
+    MOV     DX, [retfacil_y]
+    CALL    desenha_caixa_facil
+
+    MOV     byte [cor], branco_intenso
+    MOV     CX, [retmedio_x]
+    MOV     DX, [retmedio_y]
+    CALL    desenha_caixa_medio
+
+
+    MOV     byte [cor], ciano
+    MOV     CX, [retdificil_x]
+    MOV     DX, [retdificil_y]
+    CALL    desenha_caixa_dificil
+
+    MOV     AH, 08h
+    INT     21h
+    CMP     AL, 4BH ; seta esquerda
+    JE      seleciona_medio
+    CMP     AL, 4DH ; seta direita
+    JE      seleciona_facil
+    CMP     AL, 0DH
+    JNE     seleciona_dificil
+    RET
+
+seleciona_facil:
+    MOV     byte [cor], ciano
+    MOV     CX, [retfacil_x]
+    MOV     DX, [retfacil_y]
+    CALL    desenha_caixa_facil
+
+    MOV     byte [cor], branco_intenso
+    MOV     CX, [retmedio_x]
+    MOV     DX, [retmedio_y]
+    CALL    desenha_caixa_medio
+
+
+    MOV     byte [cor], branco_intenso
+    MOV     CX, [retdificil_x]
+    MOV     DX, [retdificil_y]
+    CALL    desenha_caixa_dificil
+
+    MOV     AH, 08h
+    INT     21h
+    CMP     AL, 4BH ; seta esquerda
+    JE      seleciona_dificil
+    CMP     AL, 4DH ; seta direita
+    JE      seleciona_dificil
+    CMP     AL, 0DH
+    JNE     seleciona_facil
+    RET
+
 ;-------------------------------------------------------------------------------
 ; FUNÇÕES DE MOVIMENTO
 ;-------------------------------------------------------------------------------
 
+escrever_texto:
+    ; Agora imprime a string
+    mov ah, 0Eh     ; Função para escrever caractere
+imprimir_loop:
+    lodsb           ; Carrega o próximo caractere de SI em AL
+    cmp al, 0       ; Verifica se é o fim da string
+    je fim_imprimir ; Se for o fim da string, termina
+    int 10h         ; Exibe o caractere
+    jmp imprimir_loop ; Repete para o próximo caractere
+fim_imprimir:
+    ret
 
 inverte_y:
     NEG     word [bola_vel_y]  ; Inverte direção vertical
@@ -141,15 +385,14 @@ inverte_y:
 verifica_colisao:
     ; --- Colisão com bordas superior/inferior ---
     mov ax, [bola_y]
-    sub ax, [bola_raio]       ; Considera o topo da bola
-    cmp ax, 40                ; Rebater ao ultrapassar os 20px no topo
-    jl inverte_y              ; Inverter a direção Y se ultrapassou
+    sub ax, [bola_raio]
+    cmp ax, 20             ; Topo da bola >= 20px?
+    jle inverte_y
 
-    ; --- Colisão com a borda inferior ---
     mov ax, [bola_y]
-    add ax, [bola_raio]       ; Considera a base da bola
-    cmp ax, 440               ; Rebater ao ultrapassar os 460px (480 - 20)
-    jg inverte_y              ; Inverter a direção Y se ultrapassou
+    add ax, [bola_raio]
+    cmp ax, 460            ; Base da bola <= 460px? (480 - 20)
+    jge inverte_y
 
     ; --- Verificação de gols ---
     mov ax, [bola_x]
@@ -162,7 +405,7 @@ verifica_colisao:
     cmp ax, BORNA_DIREITA  ; Bola ultrapassou a borda direita?
     jge near gol_jogador1
 
-colisao_paddle_esquerdo:
+colisao_paddle:
 
     ; Verifica colisão com paddle esquerdo
 
@@ -171,32 +414,16 @@ colisao_paddle_esquerdo:
     sub ax, [bola_raio]
     add ax, [largura]
     cmp [bola_x], ax
-    jg colisao_paddle_direito
-    mov ax, [ret1_y]
-    cmp [bola_y], ax
-    jl colisao_paddle_direito
-    mov ax, [ret1_y]
-    add ax, [altura]
-    sub ax, [bola_raio]
-    cmp [bola_y], ax
-    jl colisao
+    jle colisao
 
 
-colisao_paddle_direito:
     ; Verifica colisão com paddle direito
     mov ax, [ret2_x]
     add ax, [bola_raio]
     sub ax, [largura]
     cmp [bola_x], ax
-    jl .fim_colisoes
-    mov ax, [ret2_y]
-    cmp [bola_y], ax
-    jl .fim_colisoes
-    mov ax, [ret2_y]
-    add ax, [altura]
-    cmp [bola_y], ax
-    jl colisao
-    
+    jge colisao
+
 .fim_colisoes:
     ret
 
@@ -231,10 +458,18 @@ captura_entrada:
     cmp ah, 50h
     je p2_down
 
-    ; Tecla Q para sair
+    ; Tecla q para sair
     cmp al, 'q'
-    je near sair
-    ret
+    je near tela_de_sair
+
+    ; tecla p para pausar
+    cmp al, 'p'
+    je near tela_de_pausa
+
+    cmp al, 'r'
+    je near tela_de_reiniciar
+    
+
 .fim:
     ret
 
@@ -254,7 +489,7 @@ limite_p1:
     
 check_max_p1:
     ; Limite superior (topo não passa de 480-20-altura_paddle)
-    mov bx, 460               ; Altura total da tela (modo 12h)
+    mov bx, 480               ; Altura total da tela (modo 12h)
     sub bx, 20                ; Margem inferior de 20px
     sub bx, [altura]   ; Subtrai a altura do paddle
     cmp ax, bx
@@ -280,7 +515,7 @@ limite_p2:
     
 check_max_p2:
     ; Limite superior (topo não passa de 480-20-altura_paddle)
-    mov bx, 460               ; Altura total da tela (modo 12h)
+    mov bx, 480               ; Altura total da tela (modo 12h)
     sub bx, 20                ; Margem inferior de 20px
     sub bx, [altura]    ; Subtrai a altura do paddle
     cmp ax, bx
@@ -295,12 +530,6 @@ p2_save:
 ; FUNÇÕES DE DESENHO
 ;-------------------------------------------------------------------------------
 desenhar_retangulo:
-    ; CX = X inicial, DX = Y inicial
-    MOV     AX, CX
-    ADD     AX, [largura]       ; X final
-    MOV     BX, DX
-    ADD     BX, [altura]        ; Y final
-
     ; Preencher o retângulo
     MOV     SI, DX              ; SI = Y atual
 preencher:
@@ -314,7 +543,124 @@ preencher:
     
     INC     SI                  ; Próxima linha
     JMP     preencher
+
+
 fim_preenchimento:
+    RET
+
+desenha_caixa_sim:
+    ; CX = X inicial, DX = Y inicial
+    MOV     AX, CX
+    ADD     AX, [largura_com_texto]       ; X final
+    MOV     BX, DX
+    ADD     BX, [altura_com_texto]        ; Y final
+    CALL    desenhar_retangulo
+
+    MOV     CX,3				;número de caracteres
+    MOV     BX,0
+    MOV     DH,20				;linha 0-29
+    MOV     DL,25				;coluna 0-79
+    MOV		byte[cor], branco_intenso
+sim_confirma:
+    CALL    cursor
+    MOV     AX, [BX+texto_sim]
+    CALL    caracter
+    INC     BX					;proximo caracter
+	INC		DL					;avanca a coluna
+    LOOP    sim_confirma
+
+    RET
+
+desenha_caixa_nao:
+    ; CX = X inicial, DX = Y inicial
+    MOV     AX, CX
+    ADD     AX, [largura_com_texto]       ; X final
+    MOV     BX, DX
+    ADD     BX, [altura_com_texto]        ; Y final
+    CALL    desenhar_retangulo
+
+    MOV     CX,3				;número de caracteres
+    MOV     BX,0
+    MOV     DH,20				;linha 0-29
+    MOV     DL,45				;coluna 0-79
+    MOV		byte[cor], branco_intenso
+nao_confirma:
+    CALL    cursor
+    MOV     AX, [BX+texto_nao]
+    CALL    caracter
+    INC     BX					;proximo caracter
+	INC		DL					;avanca a coluna
+    LOOP    nao_confirma
+
+    RET
+
+desenha_caixa_facil:
+    ; CX = X inicial, DX = Y inicial
+    MOV     AX, CX
+    ADD     AX, [largura_com_texto]       ; X final
+    MOV     BX, DX
+    ADD     BX, [altura_com_texto]        ; Y final
+    CALL    desenhar_retangulo
+
+    MOV     CX,5				;número de caracteres
+    MOV     BX,0
+    MOV     DH,20				;linha 0-29
+    MOV     DL,15				;coluna 0-79
+    MOV		byte[cor], branco_intenso
+facil_confirma:
+    CALL    cursor
+    MOV     AX, [BX+texto_facil]
+    CALL    caracter
+    INC     BX					;proximo caracter
+	INC		DL					;avanca a coluna
+    LOOP    facil_confirma
+
+    RET
+
+desenha_caixa_medio:
+    ; CX = X inicial, DX = Y inicial
+    MOV     AX, CX
+    ADD     AX, [largura_com_texto]       ; X final
+    MOV     BX, DX
+    ADD     BX, [altura_com_texto]        ; Y final
+    CALL    desenhar_retangulo
+
+    MOV     CX,5				;número de caracteres
+    MOV     BX,0
+    MOV     DH,20				;linha 0-29
+    MOV     DL,35				;coluna 0-79
+    MOV		byte[cor], branco_intenso
+medio_confirma:
+    CALL    cursor
+    MOV     AX, [BX+texto_medio]
+    CALL    caracter
+    INC     BX					;proximo caracter
+	INC		DL					;avanca a coluna
+    LOOP    medio_confirma
+
+    RET
+
+desenha_caixa_dificil:
+    ; CX = X inicial, DX = Y inicial
+    MOV     AX, CX
+    ADD     AX, [largura_com_texto]       ; X final
+    MOV     BX, DX
+    ADD     BX, [altura_com_texto]        ; Y final
+    CALL    desenhar_retangulo
+
+    MOV     CX,7				;número de caracteres
+    MOV     BX,0
+    MOV     DH,20				;linha 0-29
+    MOV     DL,52				;coluna 0-79
+    MOV		byte[cor], branco_intenso
+dificil_confirma:
+    CALL    cursor
+    MOV     AX, [BX+texto_dificil]
+    CALL    caracter
+    INC     BX					;proximo caracter
+	INC		DL					;avanca a coluna
+    LOOP    dificil_confirma
+
     RET
 
 plot_xy:
@@ -676,9 +1022,35 @@ segment data
     altura       dw      80
     ret1_x       dw      50
     ret1_y       dw      100
-    ret2_x       dw      570
+    ret2_x       dw      590
     ret2_y       dw      100
-    velocidade_paddle dw  15
+    velocidade_paddle dw  7
+    
+    ; Relacionados aos retangulos com confirmação
+    ; escolha de 30px a partir do meio para sim e não
+    largura_com_texto   dw  100
+    altura_com_texto    dw 100
+    retsim_x            dw 190
+    retsim_y            dw 100
+    retnao_x            dw 350
+    retnao_y            dw 100
+    retfacil_x          dw 100
+    retfacil_y          dw 100
+    retmedio_x          dw 250
+    retmedio_y          dw 100
+    retdificil_x        dw 400
+    retdificil_y        dw 100
+
+    ; relacionado às telas
+    pausa_mensagem     db "Pausa", 0
+    sair_mensagem      db "Voce deseja sair do jogo?", 0
+    reiniciar_mensagem db "Voce deseja reiniciar o jogo?", 0
+    texto_sim          db "Sim", 0
+    texto_nao          db "Nao", 0
+    texto_dificuldade  db "Selecione a dificuldade",0
+    texto_facil        db "Facil", 0
+    texto_medio        db "Medio", 0
+    texto_dificil      db "Dificil", 0
 
     ; Cores
     cor          db      branco_intenso
@@ -690,32 +1062,18 @@ segment data
     modo_anterior db     0
     deltax       dw      0
     deltay       dw      0
-
-    left_blocks:
-        dw 20, 20, 9, 1    ; x, y, color, active
-        dw 20, 105, 10, 1
-        dw 20, 190, 11, 1
-        dw 20, 275, 12, 1
-        dw 20, 360, 13, 1
-
+    
     ; Relacionados a bola
     bola_x dw 320      ; Posição X inicial (centro da tela 640x480)
     bola_y dw 240      ; Posição Y inicial
-    bola_vel_x dw 20   ; Velocidade horizontal
-    bola_vel_y dw 20    ; Velocidade vertical
+    bola_vel_x dw 7   ; Velocidade horizontal
+    bola_vel_y dw 7    ; Velocidade vertical
     bola_raio dw 10     ; Raio da bola
 
     ;Limites de tela
 
     BORNA_ESQUERDA    equ 0
     BORNA_DIREITA     equ 640
-
-    right_blocks:
-        dw 600, 20, 9, 1    ; x, y, color, active
-        dw 600, 105, 10, 1
-        dw 600, 190, 11, 1
-        dw 600, 275, 12, 1
-        dw 600, 360, 13, 1
 
 segment stack stack
     resb 256
