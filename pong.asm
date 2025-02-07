@@ -13,37 +13,68 @@ segment code
     MOV     AX, 0012h
     INT     10h
 
+    
+    MOV CX, 5
+    MOV SI, left_blocks
+    call desenhar_blocos
+
+    MOV CX, 5
+    MOV SI, right_blocks
+    call desenhar_blocos
+
     CALL main_loop
 
 main_loop:
     CALL limpa_tela
+    call wait_sync
     CALL captura_entrada
     CALL atualiza_bola
     CALL verifica_colisao    ; Verifica colisões com paddles e bordas
     CALL desenhar_jogadores
-    CALL delay
+    call wait_sync
     JMP main_loop
 
 
-delay:
-    ; Aguarda o retraço vertical
-    mov dx, 03DAh      ; Porta de status do VGA
-.aguarda_retraco:
-    in al, dx
-    test al, 08h       ; Bit 3 = Retraço vertical ativo?
-    jz .aguarda_retraco
+wait_sync:
+    mov dx,03DAh
+wait_end:
+    in al,dx
+    test al,8
+    jnz wait_end
+wait_start:
+    in al,dx
+    test al,8
+    jz wait_start
     ret
 
 limpa_tela:
     mov dx, 03C4h        ; Porta do Sequencer
-    mov ax, 0F02h        ; Seleciona todos os 4 planos
+    mov ax, 0F02h        ; Seleciona todos os planos de cor
     out dx, ax
-    mov ax, 0A000h
+    mov ax, 0A000h       ; Segmento de memória de vídeo
     mov es, ax
-    xor di, di
-    mov cx, 38400        ; 640x480/8 = 38400 bytes por plano
-    xor ax, ax
+    mov bx, 20           ; Começa em y=40 (borda superior)
+
+.loop_linhas:
+    cmp bx, 460          ; Processa até y=440 (480 - 40)
+    jge .fim_limpeza
+
+    ; Offset da linha: y * 80 + byte_inicial (x=50 → byte 6)
+    mov ax, bx
+    mov cx, 80
+    mul cx               ; AX = y * 80
+    add ax, 6            ; Começa no byte 6 (x=50)
+    mov di, ax
+
+    ; Limpa 68 bytes (34 palavras) até x=590 (byte 73)
+    mov cx, 34           ; 34 palavras = 68 bytes
+    xor ax, ax           ; Cor preta
     rep stosw
+
+    inc bx
+    jmp .loop_linhas
+
+.fim_limpeza:
     ret
 
 gol_jogador1:
@@ -56,6 +87,7 @@ reset_bola:
     mov word [bola_x], 320
     mov word [bola_y], 240
     neg word [bola_vel_x]
+    neg word [bola_vel_y]
     ret
 
 desenhar_jogadores:
@@ -69,7 +101,25 @@ desenhar_jogadores:
     MOV     CX, [ret2_x]
     MOV     DX, [ret2_y]
     CALL    desenhar_retangulo
+    CALL    desenhar_bola
+    ret
 
+desenhar_blocos:
+    MOV ax, [SI+6] ; Ativo
+    cmp ax, 0
+    je .fim_blocos
+    PUSH CX
+    MOV     byte [cor], branco_intenso
+    MOV     CX, [SI]
+    MOV     DX, [SI+2]
+    PUSH SI
+    CALL    desenhar_retangulo
+    POP SI
+    POP CX
+
+.fim_blocos
+    ADD SI, 8
+    loop desenhar_blocos
     CALL    desenhar_bola
     RET
 
@@ -91,14 +141,15 @@ inverte_y:
 verifica_colisao:
     ; --- Colisão com bordas superior/inferior ---
     mov ax, [bola_y]
-    sub ax, [bola_raio]
-    cmp ax, 20             ; Topo da bola >= 20px?
-    jle inverte_y
+    sub ax, [bola_raio]       ; Considera o topo da bola
+    cmp ax, 40                ; Rebater ao ultrapassar os 20px no topo
+    jl inverte_y              ; Inverter a direção Y se ultrapassou
 
+    ; --- Colisão com a borda inferior ---
     mov ax, [bola_y]
-    add ax, [bola_raio]
-    cmp ax, 460            ; Base da bola <= 460px? (480 - 20)
-    jge inverte_y
+    add ax, [bola_raio]       ; Considera a base da bola
+    cmp ax, 440               ; Rebater ao ultrapassar os 460px (480 - 20)
+    jg inverte_y              ; Inverter a direção Y se ultrapassou
 
     ; --- Verificação de gols ---
     mov ax, [bola_x]
@@ -126,6 +177,7 @@ colisao_paddle_esquerdo:
     jl colisao_paddle_direito
     mov ax, [ret1_y]
     add ax, [altura]
+    sub ax, [bola_raio]
     cmp [bola_y], ax
     jl colisao
 
@@ -202,7 +254,7 @@ limite_p1:
     
 check_max_p1:
     ; Limite superior (topo não passa de 480-20-altura_paddle)
-    mov bx, 480               ; Altura total da tela (modo 12h)
+    mov bx, 460               ; Altura total da tela (modo 12h)
     sub bx, 20                ; Margem inferior de 20px
     sub bx, [altura]   ; Subtrai a altura do paddle
     cmp ax, bx
@@ -228,7 +280,7 @@ limite_p2:
     
 check_max_p2:
     ; Limite superior (topo não passa de 480-20-altura_paddle)
-    mov bx, 480               ; Altura total da tela (modo 12h)
+    mov bx, 460               ; Altura total da tela (modo 12h)
     sub bx, 20                ; Margem inferior de 20px
     sub bx, [altura]    ; Subtrai a altura do paddle
     cmp ax, bx
@@ -624,9 +676,9 @@ segment data
     altura       dw      80
     ret1_x       dw      50
     ret1_y       dw      100
-    ret2_x       dw      590
+    ret2_x       dw      570
     ret2_y       dw      100
-    velocidade_paddle dw  7
+    velocidade_paddle dw  15
 
     ; Cores
     cor          db      branco_intenso
@@ -639,17 +691,31 @@ segment data
     deltax       dw      0
     deltay       dw      0
 
+    left_blocks:
+        dw 20, 20, 9, 1    ; x, y, color, active
+        dw 20, 105, 10, 1
+        dw 20, 190, 11, 1
+        dw 20, 275, 12, 1
+        dw 20, 360, 13, 1
+
     ; Relacionados a bola
     bola_x dw 320      ; Posição X inicial (centro da tela 640x480)
     bola_y dw 240      ; Posição Y inicial
-    bola_vel_x dw 7   ; Velocidade horizontal
-    bola_vel_y dw 7    ; Velocidade vertical
+    bola_vel_x dw 20   ; Velocidade horizontal
+    bola_vel_y dw 20    ; Velocidade vertical
     bola_raio dw 10     ; Raio da bola
 
     ;Limites de tela
 
     BORNA_ESQUERDA    equ 0
     BORNA_DIREITA     equ 640
+
+    right_blocks:
+        dw 600, 20, 9, 1    ; x, y, color, active
+        dw 600, 105, 10, 1
+        dw 600, 190, 11, 1
+        dw 600, 275, 12, 1
+        dw 600, 360, 13, 1
 
 segment stack stack
     resb 256
