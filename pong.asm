@@ -481,7 +481,7 @@ captura_entrada:
     je near tela_de_pausa
 
     cmp al, 'r'
-    je near tela_de_reiniciar
+    je near game_over
     
 
 .fim:
