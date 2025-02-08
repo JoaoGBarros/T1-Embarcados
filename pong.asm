@@ -1,5 +1,12 @@
 segment code
 ..start:
+
+    
+    XOR AX, AX
+    XOR BX, BX
+    XOR CX, CX
+    XOR DX, DX
+
     MOV     AX, data
     MOV     DS, AX
     MOV     AX, stack
@@ -17,7 +24,7 @@ segment code
     CALL main_loop
 
 main_loop:
-    CALL limpa_tela
+    CALL limpa_objetos
     call wait_sync
     CALL captura_entrada
     CALL atualiza_bola
@@ -42,8 +49,65 @@ wait_start:
 limpa_tela_toda:
     MOV     AX, 0012h
     INT     10h
+    call desenhar_linhas
     call desenhar_blocos_laterais
     jmp main_loop
+
+limpa_objetos:
+    call limpa_bola
+    call limpa_jogadores
+
+    ret
+
+limpa_bola:
+    MOV     byte [cor], preto  ; Escolha a cor da bola
+    PUSH    word [bola_x_antigo]      ; Empilha X
+    PUSH    word [bola_y_antigo]      ; Empilha Y
+    PUSH    word [bola_raio]   ; Empilha raio
+    CALL    full_circle        ; Chama a função de desenho
+    RET
+
+limpa_jogadores:
+
+    CALL limpa_jogador_1
+    CALL limpa_jogador_2
+    ret
+
+
+limpa_jogador_1:
+
+    MOV AX, [ret1_y_antigo]  ; Carrega o valor de ret2_y_antigo para AX
+    CMP AX, [ret1_y]         ; Compara AX com ret2_y
+    je fim_limpeza
+    MOV     byte [cor], preto
+    MOV     CX, [ret1_x]
+    MOV     DX, [ret1_y_antigo]
+    ; CX = X inicial, DX = Y inicial
+    MOV     AX, CX
+    ADD     AX, [largura]       ; X final
+    MOV     BX, DX
+    ADD     BX, [altura]        ; Y final
+    CALL    desenhar_retangulo
+    ret
+
+limpa_jogador_2:
+    MOV AX, [ret2_y_antigo]  ; Carrega o valor de ret2_y_antigo para AX
+    CMP AX, [ret2_y]         ; Compara AX com ret2_y
+    je fim_limpeza
+    ; Desenhar segundo retângulo (direita)
+    MOV     byte [cor], preto
+    MOV     CX, [ret2_x]
+    MOV     DX, [ret2_y_antigo]
+    ; CX = X inicial, DX = Y inicial
+    MOV     AX, CX
+    ADD     AX, [largura]       ; X final
+    MOV     BX, DX
+    ADD     BX, [altura]        ; Y final
+    CALL    desenhar_retangulo
+    ret
+
+fim_limpeza:
+    ret
 
 limpa_tela:
     mov dx, 03C4h        ; Porta do Sequencer
@@ -152,6 +216,40 @@ espera_p:
     INT 21h
     cmp al, 'p'
     jne tela_de_pausa
+    call limpa_tela_toda
+    ret
+
+desenhar_linhas:
+
+    call desenhar_linha_superior
+    call desenhar_linha_inferior
+    ret
+
+
+desenhar_linha_superior:
+    MOV		byte[cor],branco_intenso	
+	MOV		AX,20
+	PUSH	AX
+	MOV		AX,460
+	PUSH	AX
+	MOV		AX,620
+	PUSH	AX
+	MOV		AX,460
+	PUSH	AX
+	CALL	line
+    ret
+
+desenhar_linha_inferior:
+    MOV		byte[cor],branco_intenso	;antenas
+	MOV		AX,20
+	PUSH	AX
+	MOV		AX,10
+	PUSH	AX
+	MOV		AX,620
+	PUSH	AX
+	MOV		AX,10
+	PUSH	AX
+	CALL	line
     ret
 
 desenhar_blocos:
@@ -197,6 +295,7 @@ tela_de_sair:
 
 
 tela_sair_fim:
+    call limpa_tela
     RET
 
 game_over:
@@ -228,13 +327,41 @@ tela_de_reiniciar:
     MOV		byte[cor], branco_intenso
     CALL    sim_ou_nao
     CMP     CL, 1
-    JE      .reiniciando
+    JE      reiniciando
     CALL encerra
 
-.reiniciando:
-    LEA AX, [..start]
-    JMP AX
-    RET
+reiniciando:
+    call reset_variaveis
+    CALL limpa_tela_toda
+    JMP ..start
+
+reset_variaveis:
+    ; Resetar posição e velocidade da bola
+    mov word [bola_x], 320
+    mov word [bola_y], 240
+    mov word [bola_x_antigo], 320
+    mov word [bola_y_antigo], 240
+    
+    ; Resetar posição dos jogadores
+    mov word [ret1_y], 100
+    mov word [ret2_y], 100
+    
+    ; Resetar blocos laterais (active=1)
+    mov cx, 5
+    mov si, left_blocks
+.reset_left:
+    mov word [si+6], 1
+    add si, 8
+    loop .reset_left
+    
+    mov cx, 5
+    mov si, right_blocks
+.reset_right:
+    mov word [si+6], 1
+    add si, 8
+    loop .reset_right
+    ret
+
 sim_ou_nao:
     CALL    cursor
     MOV     AX, [BX+SI]
@@ -369,8 +496,8 @@ seleciona_dificuldade:
     RET
 
 seleciona_medio:
-    MOV     word [bola_vel_x], 14
-    MOV     word [bola_vel_y], 14
+    MOV     word [bola_vel_x], 15
+    MOV     word [bola_vel_y], 15
     MOV     byte [cor], branco_intenso
     MOV     CX, [retfacil_x]
     MOV     DX, [retfacil_y]
@@ -427,8 +554,8 @@ seleciona_dificil:
     RET
 
 seleciona_facil:
-    MOV     word [bola_vel_x], 7
-    MOV     word [bola_vel_y], 7
+    MOV     word [bola_vel_x], 10
+    MOV     word [bola_vel_y], 10
     MOV     byte [cor], ciano
     MOV     CX, [retfacil_x]
     MOV     DX, [retfacil_y]
@@ -561,7 +688,6 @@ colisao_paddle_direito:
     ; Verifica colisão com paddle direito
     cmp word [bola_vel_x], 0
     jl fim_colisoes_direita
-    z
     mov ax, [ret2_x]
     add ax, [bola_raio]
     sub ax, [largura]
@@ -620,6 +746,14 @@ fim_colisoes:
 
 
 atualiza_bola:
+
+
+    
+    MOV AX, [bola_x]       
+    MOV [bola_x_antigo], AX 
+    MOV AX, [bola_y]      
+    MOV [bola_y_antigo], AX
+
     MOV     AX, [bola_vel_x]
     ADD     [bola_x], AX
     MOV     AX, [bola_vel_y]
@@ -662,9 +796,13 @@ captura_entrada:
 
 
 p1_up:
+    MOV AX, [ret1_y]
+    MOV [ret1_y_antigo], AX
     add word [ret1_y], velocidade_paddle
     jmp limite_p1
 p1_down:
+    MOV AX, [ret1_y]
+    MOV [ret1_y_antigo], AX
     sub word [ret1_y], velocidade_paddle
 
 limite_p1:
@@ -689,9 +827,13 @@ p1_save:
     ret
 
 p2_up:
+    MOV AX, [ret2_y]
+    MOV [ret2_y_antigo], AX
     add word [ret2_y], velocidade_paddle
     jmp limite_p2
 p2_down:
+    MOV AX, [ret2_y]
+    MOV [ret2_y_antigo], AX
     sub word [ret2_y], velocidade_paddle
 
 limite_p2:
@@ -1253,14 +1395,21 @@ segment data
     ; Relacionados a bola
     bola_x dw 320      ; Posição X inicial (centro da tela 640x480)
     bola_y dw 240      ; Posição Y inicial
-    bola_vel_x dw 7   ; Velocidade horizontal
-    bola_vel_y dw 7    ; Velocidade vertical
+    bola_vel_x dw 10   ; Velocidade horizontal
+    bola_vel_y dw 10    ; Velocidade vertical
     bola_raio dw 10     ; Raio da bola
 
     ;Limites de tela
 
     BORNA_ESQUERDA    equ 0
     BORNA_DIREITA     equ 640
+
+
+    ret1_y_antigo dw 100
+    ret2_y_antigo dw 100
+    bola_x_antigo dw 320
+    bola_y_antigo dw 240
+
 
     right_blocks:
         dw 600, 20, 9, 1    ; x, y, color, active
