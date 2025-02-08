@@ -1,149 +1,151 @@
+; Trabalho 1 - Sistemas Embarcados 2024/2
+; Alunos: João Gabriel de Barros, Lucca Avila e Tales Viana
+
 segment code
 ..start:
-
     
+    ; Inicializa os registradores com zero
     XOR AX, AX
     XOR BX, BX
     XOR CX, CX
     XOR DX, DX
 
-    MOV     AX, data
-    MOV     DS, AX
-    MOV     AX, stack
-    MOV     SS, AX
-    MOV     SP, stacktop
+    ; Configura os segmentos de dados e pilha
+    MOV AX, data
+    MOV DS, AX
+    MOV AX, stack
+    MOV SS, AX
+    MOV SP, stacktop
 
-    ; Configurar modo gráfico
-    MOV     AH, 0Fh
-    INT     10h
-    MOV     [modo_anterior], AL
-    MOV     AX, 0012h
-    INT     10h
+    ; Configura o modo gráfico
+    MOV AH, 0Fh
+    INT 10h
+    MOV [modo_anterior], AL
+    MOV AX, 0012h
+    INT 10h
+
+    ; Chama as funções iniciais do jogo
     CALL tela_de_dificuldade
-    call limpa_tela_toda
+    CALL limpa_tela_toda
     CALL main_loop
 
 main_loop:
+    ; Loop principal do jogo
     CALL limpa_objetos
-    call wait_sync
+    CALL wait_sync
     CALL captura_entrada
     CALL atualiza_bola
     CALL verifica_colisao    ; Verifica colisões com paddles e bordas
     CALL desenhar_jogadores
-    call wait_sync
+    CALL wait_sync
     JMP main_loop
 
-
 wait_sync:
-    mov dx,03DAh
+    ; Espera pelo sincronismo vertical da tela
+    MOV DX, 03DAh
 wait_end:
-    in al,dx
-    test al,8
-    jnz wait_end
+    IN AL, DX
+    TEST AL, 8
+    JNZ wait_end
 wait_start:
-    in al,dx
-    test al,8
-    jz wait_start
-    ret
-
+    IN AL, DX
+    TEST AL, 8
+    JZ wait_start
+    RET
 limpa_tela_toda:
-    MOV     AX, 0012h
-    INT     10h
-    call desenhar_linhas
-    call desenhar_blocos_laterais
-    jmp main_loop
+    ; Limpa a tela e desenha as linhas e blocos laterais
+    MOV AX, 0012h
+    INT 10h
+    CALL desenhar_linhas
+    CALL desenhar_blocos_laterais
+    JMP main_loop
 
 limpa_objetos:
-    call limpa_bola
-    call limpa_jogadores
-
-    ret
+    ; Limpa a bola e os jogadores da tela
+    CALL limpa_bola
+    CALL limpa_jogadores
+    RET
 
 limpa_bola:
-    MOV     byte [cor], preto  ; Escolha a cor da bola
-    PUSH    word [bola_x_antigo]      ; Empilha X
-    PUSH    word [bola_y_antigo]      ; Empilha Y
-    PUSH    word [bola_raio]   ; Empilha raio
-    CALL    full_circle        ; Chama a função de desenho
+    ; Limpa a bola da tela
+    MOV byte [cor], preto  ; Escolhe a cor preta para limpar
+    PUSH word [bola_x_antigo]      ; Empilha X
+    PUSH word [bola_y_antigo]      ; Empilha Y
+    PUSH word [bola_raio]   ; Empilha raio
+    CALL full_circle        ; Chama a função de desenho
     RET
 
 limpa_jogadores:
-
+    ; Limpa os jogadores da tela
     CALL limpa_jogador_1
     CALL limpa_jogador_2
-    ret
-
+    RET
 
 limpa_jogador_1:
-
-    MOV AX, [ret1_y_antigo]  ; Carrega o valor de ret2_y_antigo para AX
-    CMP AX, [ret1_y]         ; Compara AX com ret2_y
-    je fim_limpeza
-    MOV     byte [cor], preto
-    MOV     CX, [ret1_x]
-    MOV     DX, [ret1_y_antigo]
-    ; CX = X inicial, DX = Y inicial
-    MOV     AX, CX
-    ADD     AX, [largura]       ; X final
-    MOV     BX, DX
-    ADD     BX, [altura]        ; Y final
-    CALL    desenhar_retangulo
-    ret
+    ; Limpa o jogador 1 da tela
+    MOV AX, [ret1_y_antigo]
+    CMP AX, [ret1_y]
+    JE fim_limpeza
+    MOV byte [cor], preto
+    MOV CX, [ret1_x]
+    MOV DX, [ret1_y_antigo]
+    MOV AX, CX
+    ADD AX, [largura]
+    MOV BX, DX
+    ADD BX, [altura]
+    CALL desenhar_retangulo
+    RET
 
 limpa_jogador_2:
-    MOV AX, [ret2_y_antigo]  ; Carrega o valor de ret2_y_antigo para AX
-    CMP AX, [ret2_y]         ; Compara AX com ret2_y
-    je fim_limpeza
-    ; Desenhar segundo retângulo (direita)
-    MOV     byte [cor], preto
-    MOV     CX, [ret2_x]
-    MOV     DX, [ret2_y_antigo]
-    ; CX = X inicial, DX = Y inicial
-    MOV     AX, CX
-    ADD     AX, [largura]       ; X final
-    MOV     BX, DX
-    ADD     BX, [altura]        ; Y final
-    CALL    desenhar_retangulo
-    ret
+    ; Limpa o jogador 2 da tela
+    MOV AX, [ret2_y_antigo]
+    CMP AX, [ret2_y]
+    JE fim_limpeza
+    MOV byte [cor], preto
+    MOV CX, [ret2_x]
+    MOV DX, [ret2_y_antigo]
+    MOV AX, CX
+    ADD AX, [largura]
+    MOV BX, DX
+    ADD BX, [altura]
+    CALL desenhar_retangulo
+    RET
 
 fim_limpeza:
-    ret
+    RET
 
 limpa_tela:
-    mov dx, 03C4h        ; Porta do Sequencer
-    mov ax, 0F02h        ; Seleciona todos os planos de cor
-    out dx, ax
-    mov ax, 0A000h       ; Segmento de memória de vídeo
-    mov es, ax
-    mov bx, 20           ; Começa em y=40 (borda superior)
+    ; Limpa a tela inteira
+    MOV DX, 03C4h
+    MOV AX, 0F02h
+    OUT DX, AX
+    MOV AX, 0A000h
+    MOV ES, AX
+    MOV BX, 20
 
 .loop_linhas:
-    cmp bx, 460          ; Processa até y=440 (480 - 40)
-    jge .fim_limpeza
-
-    ; Offset da linha: y * 80 + byte_inicial (x=50 → byte 6)
-    mov ax, bx
-    mov cx, 80
-    mul cx               ; AX = y * 80
-    add ax, 6            ; Começa no byte 6 (x=50)
-    mov di, ax
-
-    ; Limpa 68 bytes (34 palavras) até x=590 (byte 73)
-    mov cx, 34           ; 34 palavras = 68 bytes
-    xor ax, ax           ; Cor preta
-    rep stosw
-
-    inc bx
-    jmp .loop_linhas
+    CMP BX, 460
+    JGE .fim_limpeza
+    MOV AX, BX
+    MOV CX, 80
+    MUL CX
+    ADD AX, 6
+    MOV DI, AX
+    MOV CX, 34
+    XOR AX, AX
+    REP STOSW
+    INC BX
+    JMP .loop_linhas
 
 .fim_limpeza:
-    ret
+    RET
 
 gol_jogador1:
-    jmp game_over
+    JMP game_over
 
 gol_jogador2:
-    jmp game_over
+    JMP game_over
+
 
 reset_bola:
     mov word [bola_x], 320
@@ -1424,6 +1426,17 @@ segment data
         dw 20, 190, 11, 1
         dw 20, 275, 12, 1
         dw 20, 360, 13, 1
+
+    
+    linha_superior_x_inicial dw 20
+    linha_superior_y_inicial dw 40
+    linha_superior_x_final dw 620
+    linha_superior_y_final dw 40
+
+    linha_inferior_x_inicial dw 20
+    linha_inferior_y_inicial dw 460
+    linha_inferior_x_final dw 620
+    linha_inferior_y_final dw 460
 
 
 segment stack stack
