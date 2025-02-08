@@ -13,49 +13,79 @@ segment code
     MOV     AX, 0012h
     INT     10h
     CALL tela_de_dificuldade
+    call limpa_tela_toda
     CALL main_loop
 
 main_loop:
     CALL limpa_tela
+    call wait_sync
     CALL captura_entrada
     CALL atualiza_bola
     CALL verifica_colisao    ; Verifica colisões com paddles e bordas
     CALL desenhar_jogadores
-    CALL delay
+    call wait_sync
     JMP main_loop
 
 
-delay:
-    ; Aguarda o retraço vertical
-    mov dx, 03DAh      ; Porta de status do VGA
-.aguarda_retraco:
-    in al, dx
-    test al, 08h       ; Bit 3 = Retraço vertical ativo?
-    jz .aguarda_retraco
+wait_sync:
+    mov dx,03DAh
+wait_end:
+    in al,dx
+    test al,8
+    jnz wait_end
+wait_start:
+    in al,dx
+    test al,8
+    jz wait_start
     ret
+
+limpa_tela_toda:
+    MOV     AX, 0012h
+    INT     10h
+    call desenhar_blocos_laterais
+    jmp main_loop
 
 limpa_tela:
     mov dx, 03C4h        ; Porta do Sequencer
-    mov ax, 0F02h        ; Seleciona todos os 4 planos
+    mov ax, 0F02h        ; Seleciona todos os planos de cor
     out dx, ax
-    mov ax, 0A000h
+    mov ax, 0A000h       ; Segmento de memória de vídeo
     mov es, ax
-    xor di, di
-    mov cx, 38400        ; 640x480/8 = 38400 bytes por plano
-    xor ax, ax
+    mov bx, 20           ; Começa em y=40 (borda superior)
+
+.loop_linhas:
+    cmp bx, 460          ; Processa até y=440 (480 - 40)
+    jge .fim_limpeza
+
+    ; Offset da linha: y * 80 + byte_inicial (x=50 → byte 6)
+    mov ax, bx
+    mov cx, 80
+    mul cx               ; AX = y * 80
+    add ax, 6            ; Começa no byte 6 (x=50)
+    mov di, ax
+
+    ; Limpa 68 bytes (34 palavras) até x=590 (byte 73)
+    mov cx, 34           ; 34 palavras = 68 bytes
+    xor ax, ax           ; Cor preta
     rep stosw
+
+    inc bx
+    jmp .loop_linhas
+
+.fim_limpeza:
     ret
 
 gol_jogador1:
-    jmp reset_bola
+    jmp game_over
 
 gol_jogador2:
-    jmp reset_bola
+    jmp game_over
 
 reset_bola:
     mov word [bola_x], 320
     mov word [bola_y], 240
     neg word [bola_vel_x]
+    neg word [bola_vel_y]
     ret
 
 desenhar_jogadores:
@@ -68,6 +98,7 @@ desenhar_jogadores:
     MOV     BX, DX
     ADD     BX, [altura]        ; Y final
     CALL    desenhar_retangulo
+    
 
     ; Desenhar segundo retângulo (direita)
     MOV     byte [cor], verde_claro
@@ -81,7 +112,20 @@ desenhar_jogadores:
     CALL    desenhar_retangulo
 
     CALL    desenhar_bola
-    RET
+    ret
+
+desenhar_blocos_laterais:
+    MOV CX, 5
+    MOV SI, left_blocks
+    call desenhar_blocos
+
+
+    MOV CX, 5
+    MOV SI, right_blocks
+    call desenhar_blocos
+
+    ret
+
 
 tela_de_pausa:
     MOV     AH, 0
@@ -110,6 +154,29 @@ espera_p:
     jne tela_de_pausa
     ret
 
+desenhar_blocos:
+    MOV ax, [SI+6] ; Ativo
+    cmp ax, 0
+    je .fim_blocos
+    PUSH CX
+    MOV     AL, [SI+4]
+    MOV     byte [cor], AL
+    MOV     CX, [SI]
+    MOV     AX, CX
+    ADD     AX, [largura]       ; X final
+    MOV     DX, [SI+2]
+    MOV     BX, DX
+    ADD     BX, [altura]        ; Y final
+    PUSH SI
+    CALL    desenhar_retangulo
+    POP SI
+    POP CX
+
+.fim_blocos
+    ADD SI, 8
+    loop desenhar_blocos
+    CALL    desenhar_bola
+    RET
 
 tela_de_sair:
     MOV     AH, 0
@@ -127,8 +194,11 @@ tela_de_sair:
     JNE     tela_sair_fim
     CALL    encerra
 
+
+
 tela_sair_fim:
     RET
+
 game_over:
     MOV     SI, game_over_mensagem ; Carrega o endereço da string em SI
     MOV     BL, 0x0F ; determinando a cor a partir de uma tabela fixa do registrador BL
@@ -146,6 +216,8 @@ imprime_game_over:
 	INC		DL					;avanca a coluna
     LOOP    imprime_game_over
 
+
+tela_de_reiniciar:
     MOV     SI, reiniciar_mensagem ; Carrega o endereço da string em SI
     MOV     BL, 0x0F ; determinando a cor a partir de uma tabela fixa do registrador BL
     
@@ -158,16 +230,17 @@ imprime_game_over:
     CMP     CL, 1
     JE      .reiniciando
     CALL encerra
+
 .reiniciando:
     LEA AX, [..start]
     JMP AX
-
+    RET
 sim_ou_nao:
     CALL    cursor
     MOV     AX, [BX+SI]
     CALL    caracter
     INC     BX					;proximo caracter
-    INC	    DL			     	        ;avanca a coluna
+	INC		DL					;avanca a coluna
     LOOP    sim_ou_nao
 
     ; caixa para ter um "sim" escrito
@@ -255,7 +328,7 @@ dificuldade_loop:
     MOV     AX, [BX+texto_dificuldade]
     CALL    caracter
     INC     BX					;proximo caracter
-	 INC     DL					;avanca a coluna
+	INC     DL					;avanca a coluna
     LOOP    dificuldade_loop
 
     ; caixa para ter um "fácil" escrito
@@ -296,6 +369,8 @@ seleciona_dificuldade:
     RET
 
 seleciona_medio:
+    MOV     word [bola_vel_x], 14
+    MOV     word [bola_vel_y], 14
     MOV     byte [cor], branco_intenso
     MOV     CX, [retfacil_x]
     MOV     DX, [retfacil_y]
@@ -323,6 +398,8 @@ seleciona_medio:
     RET
 
 seleciona_dificil:
+    MOV     word [bola_vel_x], 20
+    MOV     word [bola_vel_y], 20
     MOV     byte [cor], branco_intenso
     MOV     CX, [retfacil_x]
     MOV     DX, [retfacil_y]
@@ -342,14 +419,16 @@ seleciona_dificil:
     MOV     AH, 08h
     INT     21h
     CMP     AL, 4BH ; seta esquerda
-    JE      seleciona_medio
+    JE      near seleciona_medio
     CMP     AL, 4DH ; seta direita
-    JE      seleciona_facil
+    JE      near seleciona_facil
     CMP     AL, 0DH
     JNE     seleciona_dificil
     RET
 
 seleciona_facil:
+    MOV     word [bola_vel_x], 7
+    MOV     word [bola_vel_y], 7
     MOV     byte [cor], ciano
     MOV     CX, [retfacil_x]
     MOV     DX, [retfacil_y]
@@ -369,16 +448,23 @@ seleciona_facil:
     MOV     AH, 08h
     INT     21h
     CMP     AL, 4BH ; seta esquerda
-    JE      seleciona_dificil
+    JE      near seleciona_facil
     CMP     AL, 4DH ; seta direita
-    JE      seleciona_dificil
+    JE      near seleciona_dificil
     CMP     AL, 0DH
     JNE     seleciona_facil
     RET
 
+sair:
+    MOV     AH, 0
+    MOV     AL, [modo_anterior]
+    INT     10h  
+    MOV     AX, 4C00h
+    INT     21h
 ;-------------------------------------------------------------------------------
 ; FUNÇÕES DE MOVIMENTO
 ;-------------------------------------------------------------------------------
+
 
 escrever_texto:
     ; Agora imprime a string
@@ -399,14 +485,15 @@ inverte_y:
 verifica_colisao:
     ; --- Colisão com bordas superior/inferior ---
     mov ax, [bola_y]
-    sub ax, [bola_raio]
-    cmp ax, 20             ; Topo da bola >= 20px?
-    jle inverte_y
+    sub ax, [bola_raio]       ; Considera o topo da bola
+    cmp ax, 40                ; Rebater ao ultrapassar os 20px no topo
+    jl inverte_y              ; Inverter a direção Y se ultrapassou
 
+    ; --- Colisão com a borda inferior ---
     mov ax, [bola_y]
-    add ax, [bola_raio]
-    cmp ax, 460            ; Base da bola <= 460px? (480 - 20)
-    jge inverte_y
+    add ax, [bola_raio]       ; Considera a base da bola
+    cmp ax, 440               ; Rebater ao ultrapassar os 460px (480 - 20)
+    jg inverte_y              ; Inverter a direção Y se ultrapassou
 
     ; --- Verificação de gols ---
     mov ax, [bola_x]
@@ -419,8 +506,20 @@ verifica_colisao:
     cmp ax, BORNA_DIREITA  ; Bola ultrapassou a borda direita?
     jge near gol_jogador1
 
-colisao_paddle:
+    ; --- Colisão com paddles ---
 
+    call colisao_paddle_direito
+    call colisao_paddle_esquerdo
+
+
+    call colisao_blocos_direita
+    call colisao_blocos_esquerda
+    ret
+    
+
+colisao_paddle_esquerdo:
+    cmp word [bola_vel_x], 0
+    jg fim_colisoes_esquerdo
     ; Verifica colisão com paddle esquerdo
 
     mov ax, [ret1_x]
@@ -428,22 +527,97 @@ colisao_paddle:
     sub ax, [bola_raio]
     add ax, [largura]
     cmp [bola_x], ax
-    jle colisao
+    jg fim_colisoes_esquerdo
+    mov ax, [ret1_y]
+    cmp [bola_y], ax
+    jl fim_colisoes_esquerdo
+    mov ax, [ret1_y]
+    add ax, [altura]
+    sub ax, [bola_raio]
+    cmp [bola_y], ax
+    jl near colisao
 
 
+colisao_blocos_esquerda:
+    cmp word [bola_vel_x], 0
+    jg fim_colisoes_esquerdo
+    mov SI, left_blocks
+    mov ax, [SI+6]
+    cmp ax, 0
+    je fim_colisoes_esquerdo
+    mov ax, [SI]
+    add ax, [largura]
+    add ax, [bola_raio]
+    cmp [bola_x], ax
+    jg fim_colisoes_esquerdo
+
+    mov cx, 5
+    jmp verifica_y
+
+fim_colisoes_esquerdo:
+    ret
+
+colisao_paddle_direito:
     ; Verifica colisão com paddle direito
+    cmp word [bola_vel_x], 0
+    jl fim_colisoes_direita
+    z
     mov ax, [ret2_x]
     add ax, [bola_raio]
     sub ax, [largura]
     cmp [bola_x], ax
-    jge colisao
+    jl fim_colisoes_direita
+    mov ax, [ret2_y]
+    cmp [bola_y], ax
+    jl fim_colisoes_direita
+    mov ax, [ret2_y]
+    add ax, [altura]
+    cmp [bola_y], ax
+    jl colisao
 
-.fim_colisoes:
+colisao_blocos_direita:
+
+    cmp word [bola_vel_x], 0
+    jl fim_colisoes_direita
+    mov SI, right_blocks
+    mov ax, [SI+6]
+    cmp ax, 0
+    je fim_colisoes_direita
+    mov ax, [SI]
+    sub ax, [bola_raio]
+    cmp [bola_x], ax
+    jl fim_colisoes_direita
+
+    mov cx, 5
+    jmp verifica_y
+    
+fim_colisoes_direita:
     ret
+
+verifica_y:
+    MOV ax, [SI + 6]
+    CMP ax, 0
+    je loop_blocos
+    MOV ax, [SI + 2]
+    ADD ax, [altura]
+    cmp [bola_y], ax
+    jle colisao_bloco
+loop_blocos:
+    ADD SI, 8
+    loop verifica_y
 
 colisao:
     neg word [bola_vel_x]  ; Inverte direção horizontal
     ret
+
+colisao_bloco:
+    neg word [bola_vel_x]  ; Inverte direção horizontal
+    MOV word [SI+6], 0
+    call limpa_tela_toda
+    ret
+fim_colisoes:
+    ret
+
 
 atualiza_bola:
     MOV     AX, [bola_vel_x]
@@ -481,11 +655,11 @@ captura_entrada:
     je near tela_de_pausa
 
     cmp al, 'r'
-    je near game_over
-    
+    je near tela_de_reiniciar
 
 .fim:
     ret
+
 
 p1_up:
     add word [ret1_y], velocidade_paddle
@@ -503,7 +677,7 @@ limite_p1:
     
 check_max_p1:
     ; Limite superior (topo não passa de 480-20-altura_paddle)
-    mov bx, 480               ; Altura total da tela (modo 12h)
+    mov bx, 460               ; Altura total da tela (modo 12h)
     sub bx, 20                ; Margem inferior de 20px
     sub bx, [altura]   ; Subtrai a altura do paddle
     cmp ax, bx
@@ -529,7 +703,7 @@ limite_p2:
     
 check_max_p2:
     ; Limite superior (topo não passa de 480-20-altura_paddle)
-    mov bx, 480               ; Altura total da tela (modo 12h)
+    mov bx, 460               ; Altura total da tela (modo 12h)
     sub bx, 20                ; Margem inferior de 20px
     sub bx, [altura]    ; Subtrai a altura do paddle
     cmp ax, bx
@@ -557,8 +731,6 @@ preencher:
     
     INC     SI                  ; Próxima linha
     JMP     preencher
-
-
 fim_preenchimento:
     RET
 
@@ -1036,10 +1208,10 @@ segment data
     altura       dw      80
     ret1_x       dw      50
     ret1_y       dw      100
-    ret2_x       dw      590
+    ret2_x       dw      570
     ret2_y       dw      100
     velocidade_paddle dw  7
-    
+
     ; Relacionados aos retangulos com confirmação
     ; escolha de 30px a partir do meio para sim e não
     largura_com_texto   dw  100
@@ -1077,7 +1249,7 @@ segment data
     modo_anterior db     0
     deltax       dw      0
     deltay       dw      0
-    
+
     ; Relacionados a bola
     bola_x dw 320      ; Posição X inicial (centro da tela 640x480)
     bola_y dw 240      ; Posição Y inicial
@@ -1089,6 +1261,21 @@ segment data
 
     BORNA_ESQUERDA    equ 0
     BORNA_DIREITA     equ 640
+
+    right_blocks:
+        dw 600, 20, 9, 1    ; x, y, color, active
+        dw 600, 105, 10, 1
+        dw 600, 190, 11, 1
+        dw 600, 275, 12, 1
+        dw 600, 360, 13, 1
+    
+    left_blocks:
+        dw 20, 20, 9, 1    ; x, y, color, active
+        dw 20, 105, 10, 1
+        dw 20, 190, 11, 1
+        dw 20, 275, 12, 1
+        dw 20, 360, 13, 1
+
 
 segment stack stack
     resb 256
