@@ -1,5 +1,5 @@
 ; Trabalho 1 - Sistemas Embarcados 2024/2
-; Alunos: João Gabriel de Barros, Lucca Avila e Tales Viana
+; Alunos: João Gabriel de Barros, Luca da Silva Avila e Tales Viana
 
 segment code
 ..start:
