@@ -122,15 +122,30 @@ tela_de_sair:
     MOV     DH,15				;linha 0-29
     MOV     DL,28				;coluna 0-79
     MOV		byte[cor], branco_intenso
-    CALL    sair_loop
+    CALL    sim_ou_nao
     CMP     CL, 1
     JNE     tela_sair_fim
     CALL    encerra
 
 tela_sair_fim:
     RET
+game_over:
+    MOV     SI, game_over_mensagem ; Carrega o endereço da string em SI
+    MOV     BL, 0x0F ; determinando a cor a partir de uma tabela fixa do registrador BL
+    
+    MOV     CX,9				;número de caracteres
+    MOV     BX,0
+    MOV     DH,5				;linha 0-29
+    MOV     DL,35				;coluna 0-79
+    MOV		byte[cor], branco_intenso
+imprime_game_over:
+    CALL    cursor
+    MOV     AX, [BX+SI]
+    CALL    caracter
+    INC     BX					;proximo caracter
+	INC		DL					;avanca a coluna
+    LOOP    imprime_game_over
 
-tela_de_reiniciar:
     MOV     SI, reiniciar_mensagem ; Carrega o endereço da string em SI
     MOV     BL, 0x0F ; determinando a cor a partir de uma tabela fixa do registrador BL
     
@@ -139,22 +154,21 @@ tela_de_reiniciar:
     MOV     DH,15				;linha 0-29
     MOV     DL,28				;coluna 0-79
     MOV		byte[cor], branco_intenso
-    CALL    sair_loop
+    CALL    sim_ou_nao
     CMP     CL, 1
-    JE      reiniciando
+    JE      .reiniciando
     CALL encerra
-
-reiniciando:
+.reiniciando:
     LEA AX, [..start]
     JMP AX
-    RET
-sair_loop:
+
+sim_ou_nao:
     CALL    cursor
     MOV     AX, [BX+SI]
     CALL    caracter
     INC     BX					;proximo caracter
-	INC		DL					;avanca a coluna
-    LOOP    sair_loop
+    INC	    DL			     	        ;avanca a coluna
+    LOOP    sim_ou_nao
 
     ; caixa para ter um "sim" escrito
     MOV     byte [cor], branco_intenso
@@ -1044,7 +1058,8 @@ segment data
     ; relacionado às telas
     pausa_mensagem     db "Pausa", 0
     sair_mensagem      db "Voce deseja sair do jogo?", 0
-    reiniciar_mensagem db "Voce deseja reiniciar o jogo?", 0
+    reiniciar_mensagem db "Voce deseja reiniciar o jogo?", 0 
+    game_over_mensagem db "GAME OVER",0
     texto_sim          db "Sim", 0
     texto_nao          db "Nao", 0
     texto_dificuldade  db "Selecione a dificuldade",0
