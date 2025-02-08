@@ -214,18 +214,18 @@ pausa_loop:
 
     ; para sair da pausa
 espera_p:
-    MOV ah, 08h
-    INT 21h
-    cmp al, 'p'
-    jne tela_de_pausa
-    call limpa_tela_toda
-    ret
+    MOV     AH, 00h
+    INT     16h
+    CMP     AL, 'p'
+    JNE     tela_de_pausa
+    CALL    limpa_tela_toda
+    RET
 
 desenhar_linhas:
 
-    call desenhar_linha_superior
-    call desenhar_linha_inferior
-    ret
+    CALL    desenhar_linha_superior
+    CALL    desenhar_linha_inferior
+    RET
 
 
 desenhar_linha_superior:
@@ -252,12 +252,12 @@ desenhar_linha_inferior:
 	MOV		AX,10
 	PUSH	AX
 	CALL	line
-    ret
+    RET
 
 desenhar_blocos:
-    MOV ax, [SI+6] ; Ativo
-    cmp ax, 0
-    je .fim_blocos
+    MOV AX, [SI+6] ; Ativo
+    CMP AX, 0
+    JE .fim_blocos
     PUSH CX
     MOV     AL, [SI+4]
     MOV     byte [cor], AL
@@ -274,7 +274,7 @@ desenhar_blocos:
 
 .fim_blocos
     ADD SI, 8
-    loop desenhar_blocos
+    LOOP desenhar_blocos
     CALL    desenhar_bola
     RET
 
@@ -297,7 +297,7 @@ tela_de_sair:
 
 
 tela_sair_fim:
-    call limpa_tela
+    CALL    limpa_tela
     RET
 
 game_over:
@@ -330,12 +330,12 @@ tela_de_reiniciar:
     CALL    sim_ou_nao
     CMP     CL, 1
     JE      reiniciando
-    CALL encerra
+    CALL    encerra
 
 reiniciando:
-    call reset_variaveis
-    CALL limpa_tela_toda
-    JMP ..start
+    CALL    reset_variaveis
+    CALL    limpa_tela_toda
+    JMP     ..start
 
 reset_variaveis:
     ; Resetar posição e velocidade da bola
@@ -369,7 +369,7 @@ sim_ou_nao:
     MOV     AX, [BX+SI]
     CALL    caracter
     INC     BX					;proximo caracter
-	INC		DL					;avanca a coluna
+    INC	    DL			     	        ;avanca a coluna
     LOOP    sim_ou_nao
 
     ; caixa para ter um "sim" escrito
@@ -377,57 +377,23 @@ sim_ou_nao:
     MOV     CX, [retsim_x]
     MOV     DX, [retsim_y]
     
-    CALL    desenha_caixa_sim
+    CALL    orientacao_sim
 
     ; caixa para ter um "não" escrito
     MOV     byte [cor], branco_intenso
     MOV     CX, [retnao_x]
     MOV     DX, [retnao_y]
     
-    CALL    desenha_caixa_nao
+    CALL    orientacao_nao
 
-; precisa trabalhar limpeza de buffer com isso daqui, mas funciona para seleções múltiplas (base da tela de dificuldade)
-seleciona_nao:
-    MOV     byte [cor], branco_intenso
-    MOV     CX, [retsim_x]
-    MOV     DX, [retsim_y]
-    CALL    desenha_caixa_sim
-
-    MOV     byte [cor], ciano
-    MOV     CX, [retnao_x]
-    MOV     DX, [retnao_y]
-    CALL    desenha_caixa_nao
-
-    MOV     AH, 08h
-    INT     21h
-    CMP     AL, 4DH ; seta direita
-    JE      seleciona_sim
-    CMP     AL, 4BH ; seta esquerda
-    JE      seleciona_sim
-    CMP     AL, 0DH
-    JNE     seleciona_nao
-    RET
-
-seleciona_sim:
-    MOV     byte [cor], branco_intenso
-    MOV     CX, [retnao_x]
-    MOV     DX, [retnao_y]
-    CALL    desenha_caixa_nao
-
-    MOV     byte [cor], ciano
-    MOV     CX, [retsim_x]
-    MOV     DX, [retsim_y]
-    CALL    desenha_caixa_sim
-
-    MOV     AH, 08h
-    INT     21h
-    CMP     AL, 0DH
+entrada_sim_ou_nao:
+    MOV     AH, 00h
+    INT     16h
+    CMP     AL, 'y' 
     JE      seta_flag_sim
-    CMP     AL, 4DH ; seta direita
-    JE      seleciona_nao
-    CMP     AL, 4BH ; seta esquerda
-    JE      seleciona_nao
-    JMP     seleciona_sim
+    CMP     AL, 'n'
+    JE      seta_flag_nao
+    JMP     entrada_sim_ou_nao
 
 seta_flag_sim:
     MOV     CL, 1
@@ -790,9 +756,6 @@ captura_entrada:
     cmp al, 'p'
     je near tela_de_pausa
 
-    cmp al, 'r'
-    je near tela_de_reiniciar
-
 .fim:
     ret
 
@@ -878,18 +841,11 @@ preencher:
 fim_preenchimento:
     RET
 
-desenha_caixa_sim:
-    ; CX = X inicial, DX = Y inicial
-    MOV     AX, CX
-    ADD     AX, [largura_com_texto]       ; X final
-    MOV     BX, DX
-    ADD     BX, [altura_com_texto]        ; Y final
-    CALL    desenhar_retangulo
-
-    MOV     CX,3				;número de caracteres
+orientacao_sim:
+    MOV     CX,20				;número de caracteres
     MOV     BX,0
     MOV     DH,20				;linha 0-29
-    MOV     DL,25				;coluna 0-79
+    MOV     DL,20				;coluna 0-79
     MOV		byte[cor], branco_intenso
 sim_confirma:
     CALL    cursor
@@ -901,15 +857,8 @@ sim_confirma:
 
     RET
 
-desenha_caixa_nao:
-    ; CX = X inicial, DX = Y inicial
-    MOV     AX, CX
-    ADD     AX, [largura_com_texto]       ; X final
-    MOV     BX, DX
-    ADD     BX, [altura_com_texto]        ; Y final
-    CALL    desenhar_retangulo
-
-    MOV     CX,3				;número de caracteres
+orientacao_nao:
+    MOV     CX,20				;número de caracteres
     MOV     BX,0
     MOV     DH,20				;linha 0-29
     MOV     DL,45				;coluna 0-79
@@ -1376,8 +1325,8 @@ segment data
     sair_mensagem      db "Voce deseja sair do jogo?", 0
     reiniciar_mensagem db "Voce deseja reiniciar o jogo?", 0 
     game_over_mensagem db "GAME OVER",0
-    texto_sim          db "Sim", 0
-    texto_nao          db "Nao", 0
+    texto_sim          db "Pressione y para Sim", 0
+    texto_nao          db "Pressione n para Nao", 0
     texto_dificuldade  db "Selecione a dificuldade",0
     texto_facil        db "Facil", 0
     texto_medio        db "Medio", 0
